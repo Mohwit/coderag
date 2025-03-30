@@ -9,6 +9,8 @@ vector store components.
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 import logging
+import anthropic
+from rerankers import Reranker
 
 from .code_parser import CodeParser
 from .embedder import CodeEmbedder
@@ -30,6 +32,8 @@ class Repository:
         embedder: Embedder instance for generating vectors
         parser: Parser instance for processing code files
         use_code_summaries: Whether to use code summaries for embeddings
+        use_hyde: Whether to use hypothetical document embeddings
+        use_reranking: Whether to rerank search results
     """
     
     def __init__(self,
@@ -39,6 +43,8 @@ class Repository:
                  exclude_dirs: Optional[List[str]] = None,
                  exclude_extensions: Optional[List[str]] = None,
                  use_code_summaries: bool = False,
+                 use_hyde: bool = False,
+                 use_reranking: bool = False,
                  log_level: int = logging.INFO,
                  log_file: Optional[str] = None):
         """
@@ -51,6 +57,8 @@ class Repository:
             exclude_dirs: List of directory names to exclude
             exclude_extensions: List of file extensions to exclude
             use_code_summaries: Whether to use code summaries for embeddings instead of raw code
+            use_hyde: Whether to use hypothetical document embeddings
+            use_reranking: Whether to rerank search results
             log_level: Logging level
             log_file: Optional path to a log file
         """
@@ -61,6 +69,8 @@ class Repository:
         self.vector_store = vector_store
         self.embedder = embedder or CodeEmbedder()
         self.use_code_summaries = use_code_summaries
+        self.use_hyde = use_hyde
+        self.use_reranking = use_reranking
         
         # Use default exclude lists if not provided
         self.parser = CodeParser(
@@ -196,49 +206,118 @@ class Repository:
             logging.error(f"Error processing batch: {e}")
             raise
     
+    def generate_hypothetical_answer(self, query: str) -> str:
+        """
+        Generate a hypothetical code summary that would answer the query.
+        This mimics the format of our stored code summaries.
+        
+        Args:
+            query (str): Search query
+            
+        Returns:
+            str: Hypothetical code summary
+        """
+        hyde_prompt = f"""Given this question about code: "{query}"
+        Write a brief technical summary that would answer this question, as if describing a relevant code snippet.
+        Focus on implementation details and keep it concise (2-3 sentences)."""
+        
+        client = anthropic.Anthropic()
+        response = client.messages.create(
+            model="claude-3-5-sonnet-20240620",
+            temperature=0,
+            max_tokens=4096,
+            messages=[{"role": "user", "content": hyde_prompt}]
+        )
+        
+        return response.content[0].text
+
+    def rerank_documents(self, query: str, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Rerank search results based on relevance to the query.
+        
+        Args:
+            query (str): Search query
+            results: List of search results
+            
+        Returns:
+            List[Dict[str, Any]]: Reranked search results
+        """
+        # Extract text content from results
+        docs = [result["metadata"]["content"] for result in results]
+        
+        try:
+            # Initialize reranker with additional kwargs
+            ranker = Reranker(
+                "answerdotai/answerai-colbert-small-v1",
+                model_type='colbert',
+                verbose=False,  # Changed from 0 to False
+                use_fp16=True   # Add this to potentially improve performance
+            )
+            
+            # Get reranked indices
+            reranked_indices = list(ranker.rank(query=query, docs=docs))
+            
+            # Reorder results based on new ranking
+            reranked_results = [results[i] for i in reranked_indices]
+            
+            # Update scores based on new ranking
+            for i, result in enumerate(reranked_results):
+                result["score"] = 1.0 - (i / len(reranked_results))
+                
+            return reranked_results
+            
+        except Exception as e:
+            logging.warning(f"Reranking failed: {str(e)}. Returning original results.")
+            return results
+
     def search(self,
                query: str,
                top_k: int = 5,
-               filter: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+               filter: Optional[Dict[str, Any]] = None,
+               hierarchical_results: bool = True) -> List[Dict[str, Any]]:
         """
-        Search for similar code in the indexed repository.
-        
-        This method generates an embedding for the query and searches for similar
-        vectors in the vector store. Results are enhanced with hierarchical relationships
-        for improved context.
+        Search for code chunks using the query.
         
         Args:
-            query: Search query
+            query: Search query string
             top_k: Number of results to return
-            filter: Optional metadata filter (e.g., {"language": "python"})
+            filter: Optional metadata filter
+            hierarchical_results: Whether to enhance results with parent/child relationships
             
         Returns:
-            List of dictionaries containing search results with scores and metadata
+            List of search results with scores and metadata
         """
-        try:
-            logging.info(f"Searching for: {query}")
-            logging.info(f"Filter: {filter}")
-            logging.info(f"Top K: {top_k}")
-            
-            # Generate query embedding using the dedicated query embedding method
+        logging.info(f"Searching for: {query}")
+        logging.debug(f"Parameters: top_k={top_k}, filter={filter}")
+        
+        if self.use_hyde:
+            # Generate hypothetical answer
+            hyde_doc = self.generate_hypothetical_answer(query)
+            # Get embedding for hypothetical document
+            hyde_embedding = self.embedder.embed_query(hyde_doc)
+            # Search using HYDE embedding
+            results = self.vector_store.search(
+                query_embedding=hyde_embedding,
+                top_k=top_k,
+                filter=filter
+            )
+        else:
+            # Get query embedding
             query_embedding = self.embedder.embed_query(query)
-            
-            # Search vector store
+            # Perform vector search
             results = self.vector_store.search(
                 query_embedding=query_embedding,
                 top_k=top_k,
                 filter=filter
             )
             
-            # Enhance results with hierarchical relationships
-            enhanced_results = self._enhance_hierarchical_results(results)
+        if self.use_reranking:
+            results = self.rerank_documents(query, results)
             
-            logging.info(f"Found {len(enhanced_results)} results")
-            return enhanced_results
+        if hierarchical_results:
+            results = self._enhance_hierarchical_results(results)
             
-        except Exception as e:
-            logging.error(f"Error during search: {e}")
-            raise
+        return results
 
     def _enhance_hierarchical_results(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """

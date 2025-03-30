@@ -27,7 +27,8 @@ dependencies = [
     "tree-sitter-java (>=0.23.5,<0.24.0)",
     "tree-sitter-javascript (>=0.23.1,<0.24.0)",
     "tree-sitter-typescript (>=0.23.2,<0.24.0)",
-    "anthropic (>=0.49.0,<0.50.0)"
+    "anthropic (>=0.49.0,<0.50.0)",
+    "rerankers (>=0.9.1,<0.10.0)"
 ]
 
 
