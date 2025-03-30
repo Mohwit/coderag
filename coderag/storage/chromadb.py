@@ -125,14 +125,14 @@ class ChromaDBStore(VectorStore):
                 raise
     
     def search(self,
-               query_embedding: List[float],
+               query_embedding: Optional[List[float]],
                top_k: int = 5,
                filter: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """
-        Search for similar vectors in ChromaDB.
+        Search for similar vectors in ChromaDB or by ID.
         
         Args:
-            query_embedding: Query vector to search for
+            query_embedding: Query vector to search for, or None for ID-based search
             top_k: Number of results to return
             filter: Optional metadata filter (e.g., {"language": "python"})
             
@@ -143,47 +143,124 @@ class ChromaDBStore(VectorStore):
             Exception: If there's an error searching ChromaDB
         """
         try:
-            logging.debug(f"Searching ChromaDB with filter: {filter}")
-            results = self.collection.query(
-                query_embeddings=[query_embedding],
-                n_results=top_k,
-                where=filter,
-                include=['metadatas', 'distances', 'documents']
-            )
+            # Determine if this is a search by ID
+            search_by_id = query_embedding is None and filter is not None and 'id' in filter
             
-            formatted_results = []
-            for idx, (id_, distance, metadata, document) in enumerate(zip(
-                results['ids'][0],
-                results['distances'][0],
-                results['metadatas'][0],
-                results['documents'][0]
-            )):
-                # Include both code and summary in results if available
-                result_metadata = {
-                    'file_path': metadata['file_path'],
-                    'language': metadata['language'],
-                    'type': metadata['type'],
-                    'name': metadata['name'],
-                    'start_line': metadata['start_line'],
-                    'end_line': metadata['end_line'],
-                    'docstring': metadata['docstring'],
-                    'parameters': metadata['parameters'],
-                    'content': metadata['content'],  # Original code
-                }
+            if search_by_id:
+                # Search by ID
+                logging.debug(f"Searching ChromaDB by ID: {filter['id']}")
                 
-                # Add summary if it exists
-                if 'summary' in metadata:
-                    result_metadata['summary'] = metadata['summary']
+                # Convert filter format to ChromaDB where clause
+                where_filter = {"id": filter['id']}
                 
-                formatted_results.append({
-                    'id': id_,
-                    'score': 1 - distance,  # Convert distance to similarity score
-                    'metadata': result_metadata
-                })
-            
-            logging.debug(f"Found {len(formatted_results)} results")
-            return formatted_results
-            
+                # Use get instead of query for exact ID match
+                try:
+                    # Note: get() takes a list of IDs
+                    items = self.collection.get(
+                        ids=[filter['id']],
+                        include=['metadatas', 'documents']
+                    )
+                    
+                    if not items['ids']:
+                        return []  # ID not found
+                    
+                    # Format the result similar to query() results
+                    formatted_results = []
+                    for idx, (id_, metadata, document) in enumerate(zip(
+                        items['ids'],
+                        items['metadatas'],
+                        items['documents']
+                    )):
+                        # Include both code and summary in results if available
+                        result_metadata = {
+                            'file_path': metadata['file_path'],
+                            'language': metadata['language'],
+                            'type': metadata['type'],
+                            'name': metadata['name'],
+                            'start_line': metadata['start_line'],
+                            'end_line': metadata['end_line'],
+                            'docstring': metadata['docstring'],
+                            'parameters': metadata['parameters'],
+                            'content': metadata['content'],  # Original code
+                        }
+                        
+                        # Add summary if it exists
+                        if 'summary' in metadata:
+                            result_metadata['summary'] = metadata['summary']
+                        
+                        # Add hierarchical metadata if it exists
+                        if 'level' in metadata:
+                            result_metadata['level'] = metadata['level']
+                        if 'parent' in metadata:
+                            result_metadata['parent'] = metadata['parent']
+                        if 'children' in metadata:
+                            result_metadata['children'] = metadata['children']
+                        
+                        formatted_results.append({
+                            'id': id_,
+                            'score': 1.0,  # Perfect match for ID search
+                            'metadata': result_metadata
+                        })
+                    
+                    return formatted_results
+                    
+                except Exception as e:
+                    logging.error(f"Error searching ChromaDB by ID: {e}")
+                    return []
+            else:
+                # Regular vector similarity search
+                if query_embedding is None:
+                    raise ValueError("Query embedding cannot be None for similarity search")
+                    
+                logging.debug(f"Searching ChromaDB with filter: {filter}")
+                results = self.collection.query(
+                    query_embeddings=[query_embedding],
+                    n_results=top_k,
+                    where=filter,
+                    include=['metadatas', 'distances', 'documents']
+                )
+                
+                formatted_results = []
+                for idx, (id_, distance, metadata, document) in enumerate(zip(
+                    results['ids'][0],
+                    results['distances'][0],
+                    results['metadatas'][0],
+                    results['documents'][0]
+                )):
+                    # Include both code and summary in results if available
+                    result_metadata = {
+                        'file_path': metadata['file_path'],
+                        'language': metadata['language'],
+                        'type': metadata['type'],
+                        'name': metadata['name'],
+                        'start_line': metadata['start_line'],
+                        'end_line': metadata['end_line'],
+                        'docstring': metadata['docstring'],
+                        'parameters': metadata['parameters'],
+                        'content': metadata['content'],  # Original code
+                    }
+                    
+                    # Add summary if it exists
+                    if 'summary' in metadata:
+                        result_metadata['summary'] = metadata['summary']
+                    
+                    # Add hierarchical metadata if it exists
+                    if 'level' in metadata:
+                        result_metadata['level'] = metadata['level']
+                    if 'parent' in metadata:
+                        result_metadata['parent'] = metadata['parent']
+                    if 'children' in metadata:
+                        result_metadata['children'] = metadata['children']
+                    
+                    formatted_results.append({
+                        'id': id_,
+                        'score': 1 - distance,  # Convert distance to similarity score
+                        'metadata': result_metadata
+                    })
+                
+                logging.debug(f"Found {len(formatted_results)} results")
+                return formatted_results
+                
         except Exception as e:
             logging.error(f"Error searching ChromaDB: {e}")
             raise

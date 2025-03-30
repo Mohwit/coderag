@@ -44,7 +44,7 @@ class CodeEmbedder:
             batch_size: Number of texts to process in each batch
             
         Returns:
-            List of embedding vectors (list of floats)
+            List of embedding vectors (list of lists of floats)
         """
         if isinstance(texts, str):
             texts = [texts]
@@ -59,4 +59,26 @@ class CodeEmbedder:
             normalize_embeddings=True  # L2 normalize embeddings
         )
         
-        return embeddings.tolist()  # Convert numpy array to list 
+        return embeddings.tolist()  # Convert numpy array to list
+    
+    def embed_query(self, text: str) -> List[float]:
+        """
+        Generate embedding for a single query text.
+        
+        This method is specifically for query embedding, returning a single vector
+        in the format expected by vector stores for similarity search.
+        
+        Args:
+            text: Query text to embed
+            
+        Returns:
+            Single embedding vector (list of floats)
+        """
+        # Generate embedding for single text
+        embedding = self.model.encode(
+            text,
+            normalize_embeddings=True  # L2 normalize embeddings
+        )
+        
+        # Return as flat list
+        return embedding.tolist()  # Convert numpy array to list 
