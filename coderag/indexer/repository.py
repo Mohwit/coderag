@@ -127,6 +127,12 @@ class Repository:
                 
                 # Process chunks from the file
                 for chunk_text, chunk_metadata in file_chunks:
+                    # Log hierarchical information
+                    if chunk_metadata.get('type') == 'class':
+                        logging.info(f"Processing class: {chunk_metadata.get('name')} with {len(chunk_metadata.get('children', []))} methods")
+                    elif chunk_metadata.get('type') == 'method':
+                        logging.info(f"Processing method: {chunk_metadata.get('name')} in class {chunk_metadata.get('class')}")
+                    
                     # Generate summary if enabled
                     if self.use_code_summaries:
                         try:
@@ -247,12 +253,7 @@ class Repository:
         
         try:
             # Initialize reranker with additional kwargs
-            ranker = Reranker(
-                "answerdotai/answerai-colbert-small-v1",
-                model_type='colbert',
-                verbose=False,  # Changed from 0 to False
-                use_fp16=True   # Add this to potentially improve performance
-            )
+            ranker = Reranker("answerdotai/answerai-colbert-small-v1", model_type='colbert', verbose=0)
             
             # Get reranked indices
             reranked_indices = list(ranker.rank(query=query, docs=docs))
@@ -274,7 +275,7 @@ class Repository:
                query: str,
                top_k: int = 5,
                filter: Optional[Dict[str, Any]] = None,
-               hierarchical_results: bool = True) -> List[Dict[str, Any]]:
+            ) -> List[Dict[str, Any]]:
         """
         Search for code chunks using the query.
         
@@ -282,7 +283,6 @@ class Repository:
             query: Search query string
             top_k: Number of results to return
             filter: Optional metadata filter
-            hierarchical_results: Whether to enhance results with parent/child relationships
             
         Returns:
             List of search results with scores and metadata
@@ -301,6 +301,7 @@ class Repository:
                 top_k=top_k,
                 filter=filter
             )
+            results = self._enhance_hierarchical_results(results)
         else:
             # Get query embedding
             query_embedding = self.embedder.embed_query(query)
@@ -310,12 +311,10 @@ class Repository:
                 top_k=top_k,
                 filter=filter
             )
+            results = self._enhance_hierarchical_results(results)
             
         if self.use_reranking:
             results = self.rerank_documents(query, results)
-            
-        if hierarchical_results:
-            results = self._enhance_hierarchical_results(results)
             
         return results
 
