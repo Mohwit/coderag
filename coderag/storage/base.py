@@ -53,17 +53,18 @@ class VectorStore(ABC):
     
     @abstractmethod
     def search(self, 
-               query_embedding: List[float], 
+               query_embedding: Optional[List[float]], 
                top_k: int = 5, 
                filter: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """
-        Search for similar vectors in the store.
+        Search for similar vectors in the store or by ID.
         
         This method finds the closest embeddings to the query embedding based on
-        vector similarity (typically cosine similarity).
+        vector similarity (typically cosine similarity). If query_embedding is None
+        and filter contains an ID, it will search by ID instead.
         
         Args:
-            query_embedding: Query vector to search for
+            query_embedding: Query vector to search for, or None for ID-based search
             top_k: Number of results to return
             filter: Optional metadata filter to narrow down search
             

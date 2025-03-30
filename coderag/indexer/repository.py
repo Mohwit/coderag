@@ -201,46 +201,116 @@ class Repository:
                top_k: int = 5,
                filter: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """
-        Search the repository for similar code.
+        Search for similar code in the indexed repository.
         
-        This method converts the text query into an embedding and searches the vector
-        store for similar code chunks. If summaries are enabled, it will use a summary
-        of the query for better semantic matching.
+        This method generates an embedding for the query and searches for similar
+        vectors in the vector store. Results are enhanced with hierarchical relationships
+        for improved context.
         
         Args:
             query: Search query
             top_k: Number of results to return
-            filter: Optional metadata filter to narrow down search
+            filter: Optional metadata filter (e.g., {"language": "python"})
             
         Returns:
-            List of search results with scores and metadata
+            List of dictionaries containing search results with scores and metadata
         """
-        logging.info(f"Searching repository with query: '{query}'")
-        if filter:
-            logging.info(f"Using filter: {filter}")
+        try:
+            logging.info(f"Searching for: {query}")
+            logging.info(f"Filter: {filter}")
+            logging.info(f"Top K: {top_k}")
+            
+            # Generate query embedding using the dedicated query embedding method
+            query_embedding = self.embedder.embed_query(query)
+            
+            # Search vector store
+            results = self.vector_store.search(
+                query_embedding=query_embedding,
+                top_k=top_k,
+                filter=filter
+            )
+            
+            # Enhance results with hierarchical relationships
+            enhanced_results = self._enhance_hierarchical_results(results)
+            
+            logging.info(f"Found {len(enhanced_results)} results")
+            return enhanced_results
+            
+        except Exception as e:
+            logging.error(f"Error during search: {e}")
+            raise
+
+    def _enhance_hierarchical_results(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Enhance search results with hierarchical relationships.
         
-        # Generate query embedding
-        if self.use_code_summaries:
-            # If using summaries, generate a summary of the query
-            try:
-                logging.info("Generating summary for query")
-                query_summary = generate_code_summary(query)
-                query_embedding = self.embedder.embed(query_summary)[0]
-                logging.info(f"Using summarized query: '{query_summary}'")
-            except Exception as e:
-                logging.error(f"Error generating query summary: {e}")
-                # Fall back to using raw query if summary generation fails
-                logging.info("Falling back to raw query")
-                query_embedding = self.embedder.embed(query)[0]
-        else:
-            query_embedding = self.embedder.embed(query)[0]
+        This method:
+        1. Identifies method results that have parent classes
+        2. Adds context about the parent class to the method result
+        3. Ensures that relevant parts of class are included even if only methods match
         
-        # Search vector store
-        results = self.vector_store.search(
-            query_embedding=query_embedding,
-            top_k=top_k,
-            filter=filter
-        )
+        Args:
+            results: Original search results
+            
+        Returns:
+            Enhanced results with hierarchical relationships
+        """
+        enhanced_results = []
+        seen_ids = set()
         
-        logging.info(f"Found {len(results)} results")
-        return results 
+        # First pass: collect all class IDs that might be parents
+        parent_classes = {}
+        for result in results:
+            result_id = result['id']
+            if result_id in seen_ids:
+                continue
+            
+            metadata = result['metadata']
+            
+            # If this is a method with a parent class
+            if metadata.get('type') == 'method' and 'parent' in metadata:
+                parent_id = metadata['parent']
+                class_name = metadata.get('class')
+                
+                # Save this ID to fetch full class details later
+                if parent_id not in parent_classes:
+                    parent_classes[parent_id] = {
+                        'methods': [],
+                        'class_name': class_name
+                    }
+                
+                # Add this method to the parent's methods list
+                parent_classes[parent_id]['methods'].append(result)
+            
+            # Add result to enhanced list
+            enhanced_results.append(result)
+            seen_ids.add(result_id)
+        
+        # Second pass: for each method that has a parent, check if the parent is already in results
+        for parent_id, parent_info in parent_classes.items():
+            # If parent not yet in results, fetch it from vector store
+            if not any(r['id'] == parent_id for r in enhanced_results):
+                try:
+                    # Try to fetch the parent class details
+                    parent_results = self.vector_store.search(
+                        query_embedding=None,  # Not needed for ID search
+                        filter={"id": parent_id},
+                        top_k=1
+                    )
+                    
+                    if parent_results:
+                        # Add class metadata
+                        parent_result = parent_results[0]
+                        parent_result['score'] = 0.5  # Lower artificial score
+                        parent_result['included_as_context'] = True
+                        
+                        # Add to enhanced results
+                        enhanced_results.append(parent_result)
+                        logging.info(f"Added parent class {parent_info['class_name']} as context")
+                except Exception as e:
+                    logging.warning(f"Error fetching parent class: {e}")
+        
+        # Sort by score (highest first)
+        enhanced_results.sort(key=lambda x: x['score'], reverse=True)
+        
+        return enhanced_results 
