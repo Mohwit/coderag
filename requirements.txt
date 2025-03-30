@@ -1,4 +1,5 @@
 annotated-types==0.7.0
+anthropic==0.49.0
 anyio==4.9.0
 asgiref==3.8.1
 backoff==2.2.1
@@ -18,7 +19,7 @@ exceptiongroup==1.2.2
 fastapi==0.115.12
 filelock==3.18.0
 flatbuffers==25.2.10
-fsspec==2025.3.0
+fsspec==2025.3.1
 google-auth==2.38.0
 googleapis-common-protos==1.69.2
 grpcio==1.71.0
@@ -32,6 +33,7 @@ idna==3.10
 importlib_metadata==8.6.1
 importlib_resources==6.5.2
 Jinja2==3.1.6
+jiter==0.9.0
 joblib==1.4.2
 kubernetes==32.0.1
 markdown-it-py==3.0.0
@@ -59,6 +61,8 @@ overrides==7.7.0
 packaging==24.2
 pathlib==1.0.1
 pillow==11.1.0
+pinecone==6.0.2
+pinecone-plugin-interface==0.0.7
 posthog==3.23.0
 protobuf==5.29.4
 pyasn1==0.6.1
@@ -70,12 +74,12 @@ PyPika==0.48.9
 pyproject_hooks==1.2.0
 python-dateutil==2.9.0.post0
 python-dotenv==1.1.0
-python-magic==0.4.27
 PyYAML==6.0.2
 regex==2024.11.6
 requests==2.32.3
 requests-oauthlib==2.0.0
-rich==13.9.4
+rerankers==0.9.1
+rich==14.0.0
 rsa==4.9
 safetensors==0.5.3
 scikit-learn==1.6.1

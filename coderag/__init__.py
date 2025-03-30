@@ -19,6 +19,7 @@ from .indexer.embedder import CodeEmbedder
 from .indexer.code_parser import CodeParser
 from .storage.base import VectorStore
 from .storage.chromadb import ChromaDBStore
+from .storage.pinecone import PineconeStore
 from .utils.generate_summary import generate_code_summary
 from .config import setup_logging, LANGUAGE_CONFIGS
 
@@ -30,6 +31,7 @@ __all__ = [
     "CodeParser",
     "VectorStore",
     "ChromaDBStore",
+    "PineconeStore",
     "generate_code_summary",
     "setup_logging",
     "LANGUAGE_CONFIGS",
