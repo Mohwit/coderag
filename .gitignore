@@ -11,3 +11,9 @@ __pycache__/
 
 ## environment variables
 .env
+
+## devlopment files
+vector_store/
+
+## logs
+*.log
