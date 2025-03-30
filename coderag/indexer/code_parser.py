@@ -345,7 +345,7 @@ class CodeParser:
         context = f"# In class: {class_name}\n{method_text}"
         return context
     
-    def _process_class_hierarchical(self, class_node, code_bytes: bytes, language: str, file_path: str) -> Tuple[List[Tuple[str, Dict[str, Any]]], Tuple[int, int]]:
+    def _process_class_hierarchical(self, class_node, code_bytes: bytes, language: str, file_path: str) -> List[Tuple[str, Dict[str, Any]]]:
         """
         Process a class node using hierarchical chunking.
         
@@ -356,18 +356,13 @@ class CodeParser:
             file_path: Path to the source file
             
         Returns:
-            Tuple containing:
-            - List of tuples containing (chunk_text, metadata)
-            - Tuple of (start_line, end_line) for the class range
+            List of tuples containing (chunk_text, metadata)
         """
         name_node = class_node.child_by_field_name("name")
         if not name_node:
-            return [], (0, 0)
+            return []
         
         class_name = self.get_node_text(name_node, code_bytes)
-        
-        # Get class text and metadata
-        class_text = self.get_node_text(class_node, code_bytes)
         class_id = str(uuid.uuid4())
         
         # Get docstring if available
@@ -397,22 +392,52 @@ class CodeParser:
         chunks = [(class_overview, class_metadata)]
         
         # Find all method nodes
-        for child in class_node.children:
-            if self._is_function_node(child, language):
-                try:
-                    method_text, method_metadata = self._create_method_with_class_context(
-                        child, code_bytes, language, file_path, class_id, class_name)
-                    chunks.append((method_text, method_metadata))
-                    method_ids.append(method_metadata['id'])
-                except Exception as e:
-                    logging.error(f"Error processing method in class {class_name}: {e}")
-                    continue
+        body_node = class_node.child_by_field_name("body")
+        if body_node:
+            for child in body_node.children:
+                method_type = LANGUAGE_NODE_TYPES[language].get('method')
+                if isinstance(method_type, list):
+                    is_method = child.type in method_type
+                else:
+                    is_method = child.type == method_type
+                
+                if is_method:
+                    method_id = str(uuid.uuid4())
+                    method_name_node = child.child_by_field_name("name")
+                    if method_name_node:
+                        method_name = self.get_node_text(method_name_node, code_bytes)
+                        method_text = self.get_node_text(child, code_bytes)
+                        
+                        # Get method docstring
+                        method_docstring = self.get_docstring(child, code_bytes)
+                        
+                        # Create method metadata
+                        method_metadata = {
+                            'id': method_id,
+                            'file_path': file_path,
+                            'language': language,
+                            'type': 'method',
+                            'name': method_name,
+                            'class': class_name,  # Add class name for context
+                            'parent': class_id,  # Link to parent class
+                            'start_line': child.start_point[0] + 1,
+                            'end_line': child.end_point[0] + 1,
+                            'start_col': child.start_point[1],
+                            'end_col': child.end_point[1],
+                            'docstring': method_docstring or '',
+                            'level': 2  # Method level in hierarchy
+                        }
+                        
+                        # Add class context to method text
+                        method_with_context = f"# In class: {class_name}\n{method_text}"
+                        
+                        chunks.append((method_with_context, method_metadata))
+                        method_ids.append(method_id)
         
         # Update the class chunk with children IDs
         class_metadata['children'] = method_ids
         
-        # Return both the chunks and the class range
-        return chunks, (class_metadata['start_line'], class_metadata['end_line'])
+        return chunks
     
     def extract_code_chunk(self, file_path: str, code_bytes: bytes, language: str) -> List[Tuple[str, Dict[str, Any]]]:
         """
@@ -448,10 +473,13 @@ class CodeParser:
             # Process classes with hierarchical chunking
             for class_node in class_nodes:
                 try:
-                    class_chunks, class_range = self._process_class_hierarchical(
+                    class_chunks = self._process_class_hierarchical(
                         class_node, code_bytes, language, file_path)
                     chunks.extend(class_chunks)
-                    processed_class_ranges.append(class_range)
+                    processed_class_ranges.append((
+                        class_chunks[0][1]['start_line'],  # First chunk is class
+                        class_chunks[0][1]['end_line']
+                    ))
                 except Exception as e:
                     logging.error(f"Error processing class in {file_path}: {e}")
                     continue

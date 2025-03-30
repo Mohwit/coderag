@@ -42,8 +42,15 @@ def display_result(result):
             print("Methods:", ", ".join(methods))
     else:  # method
         if "parent" in metadata:
-            parent_class = metadata["parent"].split(":")[-2]
-            print(f"In class: {parent_class}")
+            # Get class name from metadata if available, otherwise try to extract from parent ID
+            class_name = metadata.get('class')
+            if not class_name and ':' in metadata['parent']:
+                try:
+                    # Try to get class name from parent ID, fallback to full ID if fails
+                    class_name = metadata['parent'].split(":")[-1]
+                except:
+                    class_name = metadata['parent']
+            print(f"In class: {class_name}")
     
     if 'summary' in metadata:
         print("\nSummary:", metadata['summary'])
@@ -58,7 +65,7 @@ def main():
     vector_store = PineconeStore(
         api_key=os.getenv("PINECONE_API_KEY"),
         index_name="coderag-example",
-        namespace="demo",
+        namespace="test",
         dimension=384,
         cloud="aws",
         region="us-east-1"
@@ -68,15 +75,15 @@ def main():
     repo = Repository(
         repo_path="./coderag",
         vector_store=vector_store,
-        use_code_summaries=True,
+        use_code_summaries=False,
         use_hyde=True,
-        use_reranking=True
+        use_reranking=False
     )
     
     # Index the repository
     print("Indexing repository...")
-    stats = repo.index()
-    print(f"Indexed {stats['total_chunks']} chunks from {stats['indexed_files']} files")
+    # stats = repo.index()
+    # print(f"Indexed {stats['total_chunks']} chunks from {stats['indexed_files']} files")
     
     # Example 1: Basic search
     print("\n=== Example 1: Basic Search ===")
@@ -99,33 +106,6 @@ def main():
     for result in results:
         display_result(result)
     
-    # Example 3: Search with namespace filter
-    print("\n=== Example 3: Search in Specific Namespace ===")
-    print("-" * 50)
-    # Create a new store instance with a different namespace
-    test_store = PineconeStore(
-        api_key=os.getenv("PINECONE_API_KEY"),
-        index_name="coderag-example",
-        namespace="test"  # Different namespace
-    )
-    
-    # Create a new repository instance
-    test_repo = Repository(
-        repo_path="./tests",  # Point to tests directory
-        vector_store=test_store,
-        use_code_summaries=True
-    )
-    
-    # Index test files
-    test_repo.index()
-    
-    # Search in test namespace
-    results = test_repo.search(
-        "find test cases for code parsing",
-        top_k=3
-    )
-    for result in results:
-        display_result(result)
 
 if __name__ == "__main__":
     main() 
