@@ -7,7 +7,6 @@ and search for code with preserved class-method relationships.
 """
 
 import os
-import logging
 import sys
 
 # Add the project root to Python path
@@ -15,18 +14,15 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
 
 from coderag import Repository, ChromaDBStore
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-
-def preview_code(code, max_lines=8):
-    """Show a preview of code with first few and last few lines."""
-    lines = code.strip().split('\n')
-    if len(lines) <= max_lines:
-        return code
+# def preview_code(code, max_lines=8):
+#     """Show a preview of code with first few and last few lines."""
+#     lines = code.strip().split('\n')
+#     if len(lines) <= max_lines:
+#         return code
     
-    first = lines[:4]
-    last = lines[-2:]
-    return '\n'.join(first + ['...'] + last)
+#     first = lines[:4]
+#     last = lines[-2:]
+#     return '\n'.join(first + ['...'] + last)
 
 def display_result(result):
     """Display a search result with hierarchical information."""
@@ -55,21 +51,23 @@ def display_result(result):
     
     print("\nCode Preview:")
     print("```")
-    print(preview_code(metadata['content']))
+    print((metadata['content']))
     print("```")
 
 def main():     
     # Initialize the vector store
     vector_store = ChromaDBStore(
-        collection_name="hierarchical_example",
-        persist_directory=".chroma"
+        collection_name="example_repo",
+        persist_directory="./vector_store",
+        verbose=True
     )
     
     # Initialize the repository handler
     repo = Repository(
         repo_path="./coderag",  # Path to the repository you want to index
         vector_store=vector_store,
-        use_code_summaries=True  # Enable code summarization
+        use_code_summaries=False,  # Enable code summarization
+        verbose=True
     )
     
     # Index the repository
@@ -78,26 +76,26 @@ def main():
     print(f"Indexed {stats['total_chunks']} chunks from {stats['indexed_files']} files")
     
     # Example 1: Search for a class
-    print("\n=== Example 1: Searching for a Class ===")
-    print("-" * 50)
-    results = repo.search(
-        "class for handling repository indexing",
-        top_k=3
-    )
-    for result in results:
-        display_result(result)
+    # print("\n=== Example 1: Searching for a Class ===")
+    # print("-" * 50)
+    # results = repo.search(
+    #     "function to handle HTTP requests",
+    #     top_k=3
+    # )
+    # for result in results:
+    #     display_result(result)
     
     # Example 2: Search for a specific method
-    print("\n=== Example 2: Searching for a Method ===")
-    print("-" * 50)
-    results = repo.search(
-        "method to extract code chunks from file",
-        top_k=3
-    )
-    for result in results:
-        display_result(result)
+    # print("\n=== Example 2: Searching for a Method ===")
+    # print("-" * 50)
+    # results = repo.search(
+    #     "method to extract code chunks from file",
+    #     top_k=3
+    # )
+    # for result in results:
+    #     display_result(result)
     
-    # Example 3: Search with language filter
+    # # Example 3: Search with language filter
     print("\n=== Example 3: Searching with Language Filter ===")
     print("-" * 50)
     results = repo.search(

@@ -5,16 +5,12 @@ This script demonstrates how to use CodeRAG with Pinecone as the vector store.
 """
 
 import os
-import logging
 import sys
 
 # Add the project root to Python path
 sys.path.insert(0, os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
 
 from coderag import Repository, PineconeStore
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
 
 def preview_code(code, max_lines=8):
     """Show a preview of code with first few and last few lines."""
