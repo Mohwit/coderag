@@ -1,9 +1,8 @@
 import os
-from typing import List, Dict, Any, Generator, Tuple, Optional
+from typing import List, Dict, Any, Generator, Tuple, Optional, Iterator
 from pathlib import Path
 import mimetypes
 from tree_sitter import Language, Parser
-import logging
 import uuid
 
 # Import language modules
@@ -87,16 +86,6 @@ LANGUAGE_NODE_TYPES = {
     }
 }
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),  # Output to console
-        logging.FileHandler('coderag.log')  # Output to file
-    ]
-)
-
 class CodeParser:
     """Parser for extracting and processing code from repositories using tree-sitter."""
     
@@ -124,7 +113,8 @@ class CodeParser:
                  repo_path: str,
                  exclude_dirs: List[str] = None,
                  exclude_extensions: List[str] = None,
-                 language_config: Dict[str, Any] = None):
+                 language_config: Dict[str, Any] = None,
+                 verbose: bool = False):
         """
         Initialize the code parser with repository path and optional configurations.
         
@@ -133,25 +123,25 @@ class CodeParser:
             exclude_dirs: List of directory names to exclude
             exclude_extensions: List of file extensions to exclude
             language_config: Optional custom language configuration
+            verbose: Whether to print detailed progress information
         """
         self.repo_path = Path(repo_path)
         self.exclude_dirs = exclude_dirs or []
         self.exclude_extensions = exclude_extensions or []
         self.language_config = language_config or {}
+        self.verbose = verbose
         
         # Initialize language parsers
         self.parsers = {}
         self.init_parsers()
-        
-        logging.debug(f"Initialized code parser for repository: {self.repo_path}")
-        logging.debug(f"Excluded directories: {self.exclude_dirs}")
-        logging.debug(f"Excluded extensions: {self.exclude_extensions}")
     
     def init_parsers(self):
         """Initialize tree-sitter parsers for supported languages."""
         try:
+            self._log("Initializing language parsers...")
             for lang, config in self.LANGUAGE_CONFIGS.items():
                 try:
+                    self._log(f"Setting up parser for {lang}")
                     if lang == 'typescript':
                         # TypeScript often has a different structure
                         try:
@@ -165,11 +155,13 @@ class CodeParser:
                     parser = Parser()
                     parser.language = lang_obj
                     self.parsers[lang] = parser
+                    self._log(f"Successfully initialized {lang} parser")
                 except Exception as e:
-                    logging.error(f"Failed to initialize {lang} parser: {e}")
+                    self._log(f"Failed to initialize {lang} parser: {str(e)}")
+                    continue
                     
         except Exception as e:
-            logging.error(f"Error initializing tree-sitter parsers: {str(e)}")
+            self._log(f"Error during parser initialization: {str(e)}")
             raise
     
     def get_language_from_extension(self, file_path: Path) -> Optional[str]:
@@ -198,19 +190,21 @@ class CodeParser:
             'application/typescript'
         ]
     
-    def walk_repository(self) -> Generator[Path, None, None]:
-        """Walk through repository and yield valid files."""
+    def walk_repository(self) -> Iterator[Path]:
+        """Walk through the repository and yield valid code files."""
         total_files = 0
         processed_files = 0
         skipped_files = 0
         
-        logging.info(f"Starting repository scan at: {self.repo_path}")
+        self._log(f"Walking repository at {self.repo_path}")
+        self._log(f"Excluding directories: {', '.join(self.exclude_dirs)}")
+        self._log(f"Excluding extensions: {', '.join(self.exclude_extensions)}")
         
         for root, dirs, files in os.walk(self.repo_path):
             # Remove excluded directories
             excluded_dirs = [d for d in dirs if d in self.exclude_dirs]
             if excluded_dirs:
-                logging.debug(f"Skipping excluded directories: {', '.join(excluded_dirs)}")
+                self._log(f"Skipping excluded directories in {root}: {', '.join(excluded_dirs)}")
             dirs[:] = [d for d in dirs if d not in self.exclude_dirs]
             
             for file in files:
@@ -218,29 +212,24 @@ class CodeParser:
                 file_path = Path(root) / file
                 
                 if file_path.suffix in self.exclude_extensions:
-                    logging.debug(f"Skipping excluded file: {file_path}")
                     skipped_files += 1
+                    self._log(f"Skipping excluded file: {file_path}")
                     continue
                 
                 if not self.is_text_file(str(file_path)):
-                    logging.debug(f"Skipping non-text file: {file_path}")
                     skipped_files += 1
+                    self._log(f"Skipping non-text file: {file_path}")
                     continue
                 
                 language = self.get_language_from_extension(file_path)
                 if not language:
-                    logging.debug(f"Skipping unsupported language file: {file_path}")
                     skipped_files += 1
+                    self._log(f"Skipping unsupported language file: {file_path}")
                     continue
                 
-                logging.info(f"Processing file: {file_path} (Language: {language})")
                 processed_files += 1
+                self._log(f"Processing file ({processed_files}/{total_files - skipped_files}): {file_path}")
                 yield file_path
-        
-        logging.info(f"Repository scan completed:")
-        logging.info(f"Total files found: {total_files}")
-        logging.info(f"Files processed: {processed_files}")
-        logging.info(f"Files skipped: {skipped_files}")
     
     def get_node_text(self, node, code_bytes: bytes) -> str:
         """Get the text content of a node."""
@@ -455,16 +444,12 @@ class CodeParser:
             List of tuples containing (code_text, metadata)
         """
         try:
-            if language not in self.parsers:
-                logging.warning(f"No parser available for language: {language}")
-                return []
-            
+            self._log(f"Extracting code chunks from {file_path}")
             parser = self.parsers[language]
             tree = parser.parse(code_bytes)
             root_node = tree.root_node
             
             chunks = []
-            logging.debug(f"Extracting chunks from {file_path} (language: {language})")
             
             # Get all classes first
             class_nodes = self._get_class_nodes(root_node, language)
@@ -472,6 +457,7 @@ class CodeParser:
             
             # Process classes with hierarchical chunking
             for class_node in class_nodes:
+                self._log("Processing class chunks")
                 try:
                     class_chunks = self._process_class_hierarchical(
                         class_node, code_bytes, language, file_path)
@@ -481,7 +467,7 @@ class CodeParser:
                         class_chunks[0][1]['end_line']
                     ))
                 except Exception as e:
-                    logging.error(f"Error processing class in {file_path}: {e}")
+                    self._log(f"Error processing class: {str(e)}")
                     continue
             
             # Process standalone functions (not within any class)
@@ -566,21 +552,17 @@ class CodeParser:
                             }
                             
                             chunks.append((func_text, metadata))
-                            logging.debug(f"Added function chunk: {func_name or 'anonymous'} "
-                                          f"({child.start_point[0] + 1}-{child.end_point[0] + 1})")
                     except Exception as e:
-                        logging.error(f"Error processing function in {file_path}: {e}")
+                        self._log(f"Error processing function: {str(e)}")
                         continue
-            
-            # Log summary
-            logging.debug(f"Extracted {len(chunks)} chunks from {file_path}")
             
             # Sort chunks by their position in the file
             chunks.sort(key=lambda x: x[1]['start_line'])
+            self._log(f"Extracted total of {len(chunks)} chunks")
             return chunks
             
         except Exception as e:
-            logging.error(f"Error extracting chunks from {file_path}: {e}")
+            self._log(f"Error extracting chunks: {str(e)}")
             return []
     
     def _get_class_nodes(self, root_node, language):
@@ -619,52 +601,34 @@ class CodeParser:
     def parse_file(self, file_path: Path) -> List[Tuple[str, Dict[str, Any]]]:
         """Parse a single file and return chunks with metadata."""
         try:
-            logging.info(f"Starting to parse file: {file_path}")
+            self._log(f"Parsing file: {file_path}")
             
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            
-            relative_path = file_path.relative_to(self.repo_path)
+            # Read file content
+            with open(file_path, 'rb') as f:
+                code_bytes = f.read()
+                
+            # Get language and parser
             language = self.get_language_from_extension(file_path)
-            
-            if not language:
-                logging.warning(f"Unsupported language for file: {file_path}")
+            if not language or language not in self.parsers:
+                self._log(f"No parser available for {file_path}")
                 return []
-            
-            logging.info(f"File size: {len(content)} bytes")
-            chunks = self.extract_code_chunk(str(file_path), content.encode('utf8'), language)
-            
-            # Add file metadata to chunks
-            for i, (chunk_content, metadata) in enumerate(chunks):
-                # If this is a hierarchical chunk, update the file path in the id
-                if 'id' in metadata and ':' in metadata['id'] and metadata['id'].startswith('unknown_file:'):
-                    prefix, rest = metadata['id'].split(':', 1)
-                    metadata['id'] = f"{relative_path}:{rest}"
                 
-                # Update parent/children references if they exist
-                if 'parent' in metadata and metadata['parent'].startswith('unknown_file:'):
-                    prefix, rest = metadata['parent'].split(':', 1)
-                    metadata['parent'] = f"{relative_path}:{rest}"
-                
-                if 'children' in metadata:
-                    updated_children = []
-                    for child in metadata['children']:
-                        if child.startswith('unknown_file:'):
-                            prefix, rest = child.split(':', 1)
-                            updated_children.append(f"{relative_path}:{rest}")
-                        else:
-                            updated_children.append(child)
-                    metadata['children'] = updated_children
-                
-                # Add file metadata
-                metadata.update({
-                    'file_path': str(relative_path),
-                    'language': language
-                })
+            parser = self.parsers[language]
+            self._log(f"Using {language} parser")
             
-            logging.info(f"Successfully parsed {len(chunks)} chunks from {file_path}")
+            # Parse code and extract chunks
+            tree = parser.parse(code_bytes)
+            self._log("Code parsed successfully, extracting chunks...")
+            chunks = self.extract_code_chunk(str(file_path), code_bytes, language)
+            self._log(f"Extracted {len(chunks)} code chunks")
+            
             return chunks
             
         except Exception as e:
-            logging.error(f"Error parsing file {file_path}: {str(e)}", exc_info=True)
-            return [] 
+            self._log(f"Error parsing file {file_path}: {str(e)}")
+            return []
+    
+    def _log(self, message: str) -> None:
+        """Print message if verbose mode is enabled."""
+        if self.verbose:
+            print(f"[CodeRAG Parser] {message}") 

@@ -8,7 +8,6 @@ allowing code embeddings to be stored and queried using ChromaDB.
 import chromadb
 from typing import List, Dict, Any, Optional
 import uuid
-import logging
 from pathlib import Path
 import os
 
@@ -43,10 +42,8 @@ class ChromaDBStore(VectorStore):
         # Create the persistence directory if it doesn't exist
         if persist_directory:
             os.makedirs(persist_directory, exist_ok=True)
-            logging.info(f"Using persistent ChromaDB at: {persist_directory}")
             self.client = chromadb.PersistentClient(path=persist_directory)
         else:
-            logging.info("Using in-memory ChromaDB (data will not persist)")
             self.client = chromadb.Client()
         
         # Get or create collection
@@ -54,8 +51,6 @@ class ChromaDBStore(VectorStore):
             name=collection_name,
             metadata={"hnsw:space": "cosine"}  # Using cosine similarity
         )
-        
-        logging.info(f"Initialized ChromaDB collection: {collection_name}")
     
     def add_embeddings(self,
                       embeddings: List[List[float]],
@@ -119,9 +114,7 @@ class ChromaDBStore(VectorStore):
                     metadatas=sanitized_metadata[i:batch_end],
                     ids=ids[i:batch_end]
                 )
-                logging.info(f"Added batch of {batch_end - i} embeddings to ChromaDB")
             except Exception as e:
-                logging.error(f"Error adding embeddings batch to ChromaDB: {e}")
                 raise
     
     def search(self,
@@ -148,8 +141,6 @@ class ChromaDBStore(VectorStore):
             
             if search_by_id:
                 # Search by ID
-                logging.debug(f"Searching ChromaDB by ID: {filter['id']}")
-                
                 # Convert filter format to ChromaDB where clause
                 where_filter = {"id": filter['id']}
                 
@@ -205,14 +196,12 @@ class ChromaDBStore(VectorStore):
                     return formatted_results
                     
                 except Exception as e:
-                    logging.error(f"Error searching ChromaDB by ID: {e}")
                     return []
             else:
                 # Regular vector similarity search
                 if query_embedding is None:
                     raise ValueError("Query embedding cannot be None for similarity search")
                     
-                logging.debug(f"Searching ChromaDB with filter: {filter}")
                 results = self.collection.query(
                     query_embeddings=[query_embedding],
                     n_results=top_k,
@@ -258,11 +247,9 @@ class ChromaDBStore(VectorStore):
                         'metadata': result_metadata
                     })
                 
-                logging.debug(f"Found {len(formatted_results)} results")
                 return formatted_results
                 
         except Exception as e:
-            logging.error(f"Error searching ChromaDB: {e}")
             raise
     
     def delete(self, ids: List[str]) -> None:
@@ -277,9 +264,7 @@ class ChromaDBStore(VectorStore):
         """
         try:
             self.collection.delete(ids=ids)
-            logging.info(f"Deleted {len(ids)} embeddings from ChromaDB")
         except Exception as e:
-            logging.error(f"Error deleting embeddings from ChromaDB: {e}")
             raise
     
     def get_collection_stats(self) -> Dict[str, Any]:
@@ -311,5 +296,4 @@ class ChromaDBStore(VectorStore):
                 "metadata": self.collection.metadata
             }
         except Exception as e:
-            logging.error(f"Error getting ChromaDB collection stats: {e}")
             raise 
