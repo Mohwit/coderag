@@ -91,18 +91,3 @@ DEFAULT_BATCH_SIZE = 100
 ## HYDE and Generate Summary 
 DEFAULT_MODEL = "claude-3-5-sonnet-20240620"
 API_KEY = None
-
-# Initialize logging
-def setup_logging(level=DEFAULT_LOG_LEVEL, log_file=None):
-    """Set up logging configuration."""
-    handlers = [logging.StreamHandler()]
-    
-    if log_file:
-        os.makedirs(os.path.dirname(log_file), exist_ok=True)
-        handlers.append(logging.FileHandler(log_file))
-    
-    logging.basicConfig(
-        level=level,
-        format=DEFAULT_LOG_FORMAT,
-        handlers=handlers
-    ) 

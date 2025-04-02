@@ -15,7 +15,7 @@ from .code_parser import CodeParser
 from .embedder import CodeEmbedder
 from ..storage.base import VectorStore
 from ..utils.generate_summary import generate_code_summary
-from ..config import DEFAULT_EXCLUDE_DIRS, DEFAULT_EXCLUDE_EXTENSIONS, DEFAULT_BATCH_SIZE, DEFAULT_MODEL, API_KEY, setup_logging
+from ..config import DEFAULT_EXCLUDE_DIRS, DEFAULT_EXCLUDE_EXTENSIONS, DEFAULT_BATCH_SIZE, DEFAULT_MODEL, API_KEY
 
 class Repository:
     """
@@ -45,10 +45,8 @@ class Repository:
                  use_code_summaries: bool = False,
                  use_hyde: bool = False,
                  use_reranking: bool = False,
-                 log_level: int = logging.INFO,
-                 log_file: Optional[str] = None,
                  model: str = DEFAULT_MODEL,
-                 api_key: str = API_KEY):
+                 api_key: str = API_KEY,
                  verbose: bool = False):
         """
         Initialize the repository handler.
