@@ -21,7 +21,7 @@ from .storage.base import VectorStore
 from .storage.chromadb import ChromaDBStore
 from .storage.pinecone import PineconeStore
 from .utils.generate_summary import generate_code_summary
-from .config import setup_logging, LANGUAGE_CONFIGS
+from .config import LANGUAGE_CONFIGS
 
 __version__ = "0.1.0"
 
@@ -33,9 +33,5 @@ __all__ = [
     "ChromaDBStore",
     "PineconeStore",
     "generate_code_summary",
-    "setup_logging",
     "LANGUAGE_CONFIGS",
 ]
-
-# Set up default logging
-setup_logging()

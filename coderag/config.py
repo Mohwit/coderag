@@ -4,13 +4,8 @@ Configuration module for CodeRAG.
 This module contains default settings and configuration options for the CodeRAG package.
 """
 
-import logging
 import os
 from pathlib import Path
-
-# Default logging configuration
-DEFAULT_LOG_LEVEL = logging.INFO
-DEFAULT_LOG_FORMAT = '%(asctime)s - %(levelname)s - %(message)s'
 
 # Repository parsing defaults
 DEFAULT_EXCLUDE_DIRS = ['.git', 'node_modules', '__pycache__', '.venv', 'venv', 'env']
@@ -90,6 +85,7 @@ DEFAULT_EMBEDDING_BATCH_SIZE = 32
 # Storage defaults
 DEFAULT_COLLECTION_NAME = "code_embeddings"
 DEFAULT_VECTOR_STORE_DIR = os.path.join(str(Path.home()), ".coderag", "vector_store")
+
 DEFAULT_BATCH_SIZE = 100
 
 ## HYDE and Generate Summary 

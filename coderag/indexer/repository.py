@@ -8,7 +8,6 @@ vector store components.
 
 from typing import Optional, List, Dict, Any
 from pathlib import Path
-import logging
 import anthropic
 from rerankers import Reranker
 
@@ -34,6 +33,7 @@ class Repository:
         use_code_summaries: Whether to use code summaries for embeddings
         use_hyde: Whether to use hypothetical document embeddings
         use_reranking: Whether to rerank search results
+        verbose: Whether to print detailed progress information
     """
     
     def __init__(self,
@@ -49,6 +49,7 @@ class Repository:
                  log_file: Optional[str] = None,
                  model: str = DEFAULT_MODEL,
                  api_key: str = API_KEY):
+                 verbose: bool = False):
         """
         Initialize the repository handler.
         
@@ -61,30 +62,29 @@ class Repository:
             use_code_summaries: Whether to use code summaries for embeddings instead of raw code
             use_hyde: Whether to use hypothetical document embeddings
             use_reranking: Whether to rerank search results
-            log_level: Logging level
-            log_file: Optional path to a log file
+            verbose: Whether to print detailed progress information
         """
-        # Set up logging
-        setup_logging(level=log_level, log_file=log_file)
-        
         self.repo_path = Path(repo_path)
         self.vector_store = vector_store
-        self.embedder = embedder or CodeEmbedder()
+        self.embedder = embedder or CodeEmbedder(verbose=verbose)
         self.use_code_summaries = use_code_summaries
         self.use_hyde = use_hyde
         self.use_reranking = use_reranking
         self.model = model
         self.api_key = api_key
-        
+        self.verbose = verbose      
         # Use default exclude lists if not provided
         self.parser = CodeParser(
             repo_path=repo_path,
             exclude_dirs=exclude_dirs or DEFAULT_EXCLUDE_DIRS,
-            exclude_extensions=exclude_extensions or DEFAULT_EXCLUDE_EXTENSIONS
+            exclude_extensions=exclude_extensions or DEFAULT_EXCLUDE_EXTENSIONS,
+            verbose=verbose
         )
-        
-        logging.info(f"Initialized repository handler for: {self.repo_path}")
-        logging.info(f"Summary mode: {'enabled' if self.use_code_summaries else 'disabled'}")
+    
+    def _log(self, message: str) -> None:
+        """Print message if verbose mode is enabled."""
+        if self.verbose:
+            print(f"[CodeRAG] {message}")
     
     def index(self, batch_size: int = DEFAULT_BATCH_SIZE) -> Dict[str, Any]:
         """
@@ -99,14 +99,11 @@ class Repository:
         Returns:
             Dictionary containing indexing statistics
         """
-        logging.info(f"Starting indexing of repository: {self.repo_path}")
-        logging.info(f"Using {'code summaries' if self.use_code_summaries else 'raw code'} for embeddings")
-        logging.info(f"Batch size: {batch_size}")
-        
         # Collect all files
+        self._log("Starting repository indexing...")
         files = list(self.parser.walk_repository())
         total_files = len(files)
-        logging.info(f"Found {total_files} files to process")
+        self._log(f"Found {total_files} files to process")
         
         # Process files in batches
         chunks = []
@@ -119,24 +116,18 @@ class Repository:
         # Process each file
         for i, file_path in enumerate(files, 1):
             try:
-                logging.info(f"Processing file {i}/{total_files}: {file_path}")
+                self._log(f"Processing file {i}/{total_files}: {file_path}")
                 file_chunks = self.parser.parse_file(file_path)
                 
                 if not file_chunks:
-                    logging.warning(f"No valid chunks found in file: {file_path}")
                     skipped_files += 1
+                    self._log(f"Skipped empty file: {file_path}")
                     continue
                 
                 indexed_files += 1
                 
                 # Process chunks from the file
                 for chunk_text, chunk_metadata in file_chunks:
-                    # Log hierarchical information
-                    if chunk_metadata.get('type') == 'class':
-                        logging.info(f"Processing class: {chunk_metadata.get('name')} with {len(chunk_metadata.get('children', []))} methods")
-                    elif chunk_metadata.get('type') == 'method':
-                        logging.info(f"Processing method: {chunk_metadata.get('name')} in class {chunk_metadata.get('class')}")
-                    
                     # Generate summary if enabled
                     if self.use_code_summaries:
                         try:
@@ -146,7 +137,7 @@ class Repository:
                             chunk_metadata['summary'] = summary
                             chunk_metadata['content'] = chunk_text
                         except Exception as e:
-                            logging.error(f"Error generating summary for chunk: {e}")
+                            self._log(f"Failed to generate summary, using raw code: {str(e)}")
                             # Fall back to using raw code if summary generation fails
                             chunks.append(chunk_text)
                             chunk_metadata['content'] = chunk_text
@@ -159,19 +150,19 @@ class Repository:
                     
                     # Process batch if size reached
                     if len(chunks) >= batch_size:
-                        logging.info(f"Processing batch of {len(chunks)} chunks")
+                        self._log(f"Processing batch of {len(chunks)} chunks")
                         self._process_batch(chunks, metadata)
                         chunks = []
                         metadata = []
                         
             except Exception as e:
-                logging.error(f"Error processing file {file_path}: {e}")
+                self._log(f"Error processing file {file_path}: {str(e)}")
                 processing_errors += 1
                 skipped_files += 1
         
         # Process remaining chunks
         if chunks:
-            logging.info(f"Processing final batch of {len(chunks)} chunks")
+            self._log(f"Processing final batch of {len(chunks)} chunks")
             self._process_batch(chunks, metadata)
         
         # Generate statistics
@@ -184,11 +175,8 @@ class Repository:
             "vector_store_stats": self.vector_store.get_collection_stats()
         }
         
-        logging.info(f"Indexing completed:")
-        logging.info(f"Total files processed: {total_files}")
-        logging.info(f"Successfully indexed files: {indexed_files}")
-        logging.info(f"Skipped files: {skipped_files}")
-        logging.info(f"Total chunks created: {total_chunks}")
+        self._log("Indexing completed successfully")
+        self._log(f"Indexed {indexed_files} files, {total_chunks} chunks, {skipped_files} skipped, {processing_errors} errors")
         
         return stats
     
@@ -205,15 +193,18 @@ class Repository:
         """
         try:
             # Generate embeddings
+            self._log(f"Generating embeddings for {len(chunks)} chunks")
             embeddings = self.embedder.embed(chunks)
             
             # Store in vector database
+            self._log("Storing embeddings in vector store")
             self.vector_store.add_embeddings(
                 embeddings=embeddings,
                 metadata=metadata
             )
+            self._log("Successfully stored batch in vector store")
         except Exception as e:
-            logging.error(f"Error processing batch: {e}")
+            self._log(f"Error processing batch: {str(e)}")
             raise
     
     def generate_hypothetical_answer(self, query: str) -> str:
@@ -273,7 +264,6 @@ class Repository:
             return reranked_results
             
         except Exception as e:
-            logging.warning(f"Reranking failed: {str(e)}. Returning original results.")
             return results
 
     def search(self,
@@ -290,37 +280,35 @@ class Repository:
             filter: Optional metadata filter
             
         Returns:
-            List of search results with scores and metadata
+            List of dictionaries containing search results with metadata
         """
-        logging.info(f"Searching for: {query}")
-        logging.debug(f"Parameters: top_k={top_k}, filter={filter}")
+        self._log(f"Searching for: {query}")
         
         if self.use_hyde:
-            # Generate hypothetical answer
-            hyde_doc = self.generate_hypothetical_answer(query)
-            # Get embedding for hypothetical document
-            hyde_embedding = self.embedder.embed_query(hyde_doc)
-            # Search using HYDE embedding
-            results = self.vector_store.search(
-                query_embedding=hyde_embedding,
-                top_k=top_k,
-                filter=filter
-            )
-            results = self._enhance_hierarchical_results(results)
+            self._log("Generating hypothetical answer for search...")
+            hypothetical_answer = self.generate_hypothetical_answer(query)
+            self._log("Using hypothetical answer to enhance search")
+            search_query = hypothetical_answer
         else:
-            # Get query embedding
-            query_embedding = self.embedder.embed_query(query)
-            # Perform vector search
-            results = self.vector_store.search(
-                query_embedding=query_embedding,
-                top_k=top_k,
-                filter=filter
-            )
-            results = self._enhance_hierarchical_results(results)
+            search_query = query
             
-        if self.use_reranking:
+        # Generate embedding for search query
+        self._log("Generating embedding for search query")
+        query_embedding = self.embedder.embed([search_query])[0]
+        
+        # Search vector store
+        self._log(f"Searching vector store with top_k={top_k}")
+        results = self.vector_store.search(
+            query_embedding=query_embedding,
+            top_k=top_k,
+            filter=filter
+        )
+        
+        if self.use_reranking and len(results) > 1:
+            self._log("Reranking search results")
             results = self.rerank_documents(query, results)
             
+        self._log(f"Found {len(results)} results")
         return results
 
     def _enhance_hierarchical_results(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -389,9 +377,8 @@ class Repository:
                         
                         # Add to enhanced results
                         enhanced_results.append(parent_result)
-                        logging.info(f"Added parent class {parent_info['class_name']} as context")
                 except Exception as e:
-                    logging.warning(f"Error fetching parent class: {e}")
+                    pass
         
         # Sort by score (highest first)
         enhanced_results.sort(key=lambda x: x['score'], reverse=True)
