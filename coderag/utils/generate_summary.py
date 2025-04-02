@@ -1,14 +1,13 @@
 import anthropic
-from dotenv import load_dotenv
+from ..config import DEFAULT_MODEL, API_KEY
 
-load_dotenv()
-
-def generate_code_summary(code: str):
+def generate_code_summary(code: str, model: str = DEFAULT_MODEL, api_key: str = API_KEY):
     """ Generate a summary of the code """
     
     client = anthropic.Anthropic()
     response = client.messages.create(
-        model="claude-3-5-haiku-20241022",
+        model=model,
+        api_key=api_key,
         max_tokens=4096,
         temperature=0,
         system= """You are a helpful assistant that generates a summary of the code.\n

@@ -1,5 +1,9 @@
 import sys
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 # Add the project root to Python path
 sys.path.insert(0, os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
 
@@ -16,7 +20,9 @@ def main():
     repo = Repository(
         repo_path="./coderag",  # Path to the repository you want to index
         vector_store=vector_store,
-        use_code_summaries=True  # Enable code summarization
+        use_code_summaries=True,  # Enable code summarization
+        model="claude-3-5-sonnet-20240620",
+        api_key=os.getenv("ANTHROPIC_API_KEY")
     )
     
     # Index the repository

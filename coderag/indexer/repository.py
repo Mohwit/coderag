@@ -16,7 +16,7 @@ from .code_parser import CodeParser
 from .embedder import CodeEmbedder
 from ..storage.base import VectorStore
 from ..utils.generate_summary import generate_code_summary
-from ..config import DEFAULT_EXCLUDE_DIRS, DEFAULT_EXCLUDE_EXTENSIONS, DEFAULT_BATCH_SIZE, setup_logging
+from ..config import DEFAULT_EXCLUDE_DIRS, DEFAULT_EXCLUDE_EXTENSIONS, DEFAULT_BATCH_SIZE, DEFAULT_MODEL, API_KEY, setup_logging
 
 class Repository:
     """
@@ -46,7 +46,9 @@ class Repository:
                  use_hyde: bool = False,
                  use_reranking: bool = False,
                  log_level: int = logging.INFO,
-                 log_file: Optional[str] = None):
+                 log_file: Optional[str] = None,
+                 model: str = DEFAULT_MODEL,
+                 api_key: str = API_KEY):
         """
         Initialize the repository handler.
         
@@ -71,6 +73,8 @@ class Repository:
         self.use_code_summaries = use_code_summaries
         self.use_hyde = use_hyde
         self.use_reranking = use_reranking
+        self.model = model
+        self.api_key = api_key
         
         # Use default exclude lists if not provided
         self.parser = CodeParser(
@@ -136,7 +140,7 @@ class Repository:
                     # Generate summary if enabled
                     if self.use_code_summaries:
                         try:
-                            summary = generate_code_summary(chunk_text)
+                            summary = generate_code_summary(chunk_text, self.model, self.api_key)
                             chunks.append(summary)
                             # Store both summary and original code in metadata
                             chunk_metadata['summary'] = summary
@@ -229,7 +233,8 @@ class Repository:
         
         client = anthropic.Anthropic()
         response = client.messages.create(
-            model="claude-3-5-sonnet-20240620",
+            model=self.model,
+            api_key=self.api_key,
             temperature=0,
             max_tokens=4096,
             messages=[{"role": "user", "content": hyde_prompt}]

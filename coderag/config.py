@@ -92,6 +92,10 @@ DEFAULT_COLLECTION_NAME = "code_embeddings"
 DEFAULT_VECTOR_STORE_DIR = os.path.join(str(Path.home()), ".coderag", "vector_store")
 DEFAULT_BATCH_SIZE = 100
 
+## HYDE and Generate Summary 
+DEFAULT_MODEL = "claude-3-5-sonnet-20240620"
+API_KEY = None
+
 # Initialize logging
 def setup_logging(level=DEFAULT_LOG_LEVEL, log_file=None):
     """Set up logging configuration."""
