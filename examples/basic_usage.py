@@ -22,7 +22,10 @@ def main():
         vector_store=vector_store,
         use_code_summaries=True,  # Enable code summarization
         model="claude-3-5-sonnet-20240620",
-        api_key=os.getenv("ANTHROPIC_API_KEY")
+        api_key=os.getenv("ANTHROPIC_API_KEY"),
+        use_hyde=True,
+        use_reranking=True,
+        verbose=True
     )
     
     # Index the repository

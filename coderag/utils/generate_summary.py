@@ -4,10 +4,9 @@ from ..config import DEFAULT_MODEL, API_KEY
 def generate_code_summary(code: str, model: str = DEFAULT_MODEL, api_key: str = API_KEY):
     """ Generate a summary of the code """
     
-    client = anthropic.Anthropic()
+    client = anthropic.Anthropic(api_key=API_KEY)
     response = client.messages.create(
         model=model,
-        api_key=api_key,
         max_tokens=4096,
         temperature=0,
         system= """You are a helpful assistant that generates a summary of the code.\n

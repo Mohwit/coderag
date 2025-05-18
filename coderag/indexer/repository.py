@@ -220,10 +220,9 @@ class Repository:
         Write a brief technical summary that would answer this question, as if describing a relevant code snippet.
         Focus on implementation details and keep it concise (2-3 sentences)."""
         
-        client = anthropic.Anthropic()
+        client = anthropic.Anthropic(api_key=self.api_key)
         response = client.messages.create(
             model=self.model,
-            api_key=self.api_key,
             temperature=0,
             max_tokens=4096,
             messages=[{"role": "user", "content": hyde_prompt}]
